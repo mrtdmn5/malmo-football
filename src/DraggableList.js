@@ -3,41 +3,126 @@ import { View, Text, TouchableOpacity } from "react-native";
 import DraggableFlatList from "react-native-draggable-flatlist";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-const getUniqueColor = (usedColors) => {
-  const colors = ["#FF6B6B", "#4ECDC4", "#FFD93D", "#1A535C", "#FF9F1C"];
-  const availableColors = colors.filter((color) => !usedColors[color]);
-  return availableColors.length > 0
-    ? availableColors[Math.floor(Math.random() * availableColors.length)]
-    : colors[Math.floor(Math.random() * colors.length)];
-};
-
-export default function DraggableList({ data, setData, deleteUser }) {
+export default function DraggableList({ data, setData, editUser, deleteUser }) {
   const [ownerColors, setOwnerColors] = useState({});
-
   useEffect(() => {
     const newColors = {};
-    const usedColors = {}; // Kullanılan renkleri takip eder
+    setOwnerColors(null);
+  }, [data]);
 
-    data.forEach((item) => {
-      if (!newColors[item.owner]) {
-        const color = getUniqueColor(usedColors);
-        newColors[item.owner] = color;
-        usedColors[color] = true; // Rengin kullanıldığını işaretle
+  function calculateRating(player) {
+    // Özellikleri ve pozisyonu kontrol et, eksik olanları varsayılan değerlere ayarla
+    if (
+      !player ||
+      !player.label ||
+      player.label === "" ||
+      player.label === "Team 1" ||
+      player.label === "Team 2"
+    )
+      return;
+    const attributes = ["dribbling", "defence", "pass", "shot", "speed"];
+    const defaultAttributes = {};
+    attributes.forEach((attr) => {
+      if (!player.hasOwnProperty(attr) || !player[attr]) {
+        defaultAttributes[attr] = 7;
+      } else {
+        defaultAttributes[attr] = parseInt(player[attr]);
       }
     });
 
-    setOwnerColors(newColors);
-  }, [data]);
+    // Pozisyon kontrolü, eğer yoksa 'Midfielder' olarak al
+    const position = player.position ? player.position : "Midfielder";
 
+    // Pozisyona göre ağırlıklandırma yapabilirsiniz (isteğe bağlı)
+    // Örneğin, defans oyuncuları için 'defence' özelliğine daha fazla ağırlık verebilirsiniz
+    let rating = 0;
+    switch (position) {
+      case "1":
+        rating =
+          defaultAttributes.defence * 1.2 +
+          defaultAttributes.pass +
+          defaultAttributes.speed +
+          defaultAttributes.dribbling * 0.8 +
+          defaultAttributes.shot * 0.8;
+        break;
+      case "2":
+        rating =
+          defaultAttributes.dribbling +
+          defaultAttributes.pass * 1.2 +
+          defaultAttributes.speed +
+          defaultAttributes.shot +
+          defaultAttributes.defence;
+        break;
+      case "3":
+        rating =
+          defaultAttributes.shot * 1.2 +
+          defaultAttributes.speed +
+          defaultAttributes.dribbling +
+          defaultAttributes.pass +
+          defaultAttributes.defence * 0.8;
+        break;
+      case "4":
+        rating =
+          defaultAttributes.defence * 1.5 +
+          defaultAttributes.pass +
+          defaultAttributes.speed * 0.8 +
+          defaultAttributes.dribbling * 0.5 +
+          defaultAttributes.shot * 0.5;
+        break;
+      default:
+        rating =
+          defaultAttributes.dribbling +
+          defaultAttributes.defence +
+          defaultAttributes.pass +
+          defaultAttributes.shot +
+          defaultAttributes.speed;
+        break;
+    }
+
+    return (rating / 5).toString().substring(0, 3);
+  }
+
+  function calculateTeamsRatings(data) {
+    // 'Team 1' ve 'Team 2' etiketlerinin indekslerini bul
+    const team1Index = data.findIndex((item) => item.label === "Team 1");
+    const team2Index = data.findIndex((item) => item.label === "Team 2");
+
+    let team1Rating = 0;
+    let team2Rating = 0;
+
+    if (team1Index !== -1) {
+      // 'Team 1' oyuncularını al
+      const team1Players = data.slice(
+        team1Index + 1,
+        team2Index !== -1 ? team2Index : data.length
+      );
+      team1Rating = team1Players.reduce(
+        (sum, player) => sum + (player.rating || 0),
+        0
+      );
+    }
+
+    if (team2Index !== -1) {
+      // 'Team 2' oyuncularını al
+      const team2Players = data.slice(team2Index + 1);
+      team2Rating = team2Players.reduce(
+        (sum, player) => sum + (player.rating || 0),
+        0
+      );
+    }
+    team1Rating=team1Rating/5;
+    team2Rating=team2Rating/5;
+    return { team1Rating, team2Rating };
+  }
   const renderItem = ({ item, index, drag, isActive }) =>
     item.label !== "Team 2" && item.label !== "Team 1" ? (
       <TouchableOpacity
-      activeOpacity={0.8}
+        activeOpacity={0.8}
         style={{
           flexDirection: "row",
           alignItems: "center",
           padding: 2,
-          paddingHorizontal:7,
+          paddingHorizontal: 7,
           backgroundColor: isActive ? "lightblue" : "#fff",
           borderRadius: 10,
           marginBottom: 7,
@@ -50,43 +135,65 @@ export default function DraggableList({ data, setData, deleteUser }) {
         }}
         onLongPress={drag}
       >
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
           <Text
             style={{
               fontWeight: "bold",
               color: "#000",
               fontSize: 16,
               textTransform: "capitalize",
+              marginRight: 7,
             }}
           >
             {item.label}
           </Text>
-          {/* <Text
+
+          <Text
             style={{
-              color: ownerColors[item.owner] || "#000",
-              fontSize: 13,
+              color: "#000",
+              fontSize: 12,
               textTransform: "capitalize",
             }}
           >
-            {item.owner}
-          </Text> */}
+            ({calculateRating(item)})
+          </Text>
         </View>
+        <TouchableOpacity onPress={() => editUser(item.key)}>
+          <Text style={{ color: "#3f8ed0", fontSize: 14, padding: 10 }}>
+            Edit
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => deleteUser(item.key)}>
           <Text style={{ color: "red", fontSize: 20, padding: 10 }}>✕</Text>
         </TouchableOpacity>
       </TouchableOpacity>
     ) : (
-      <Text
-        style={{
-          marginHorizontal: 10,
-          padding: 10,
-          fontWeight: "bold",
-          marginTop: 10,
-          marginBottom: 5,
-        }}
-      >
-        {item.label}
-      </Text>
+      <View style={{ flexDirection: "row", alignItems:"center"}}>
+        <Text
+          style={{
+            marginLeft: 10,
+            padding: 10,
+            fontWeight: "bold",
+            marginTop: 10,
+            marginBottom: 5,
+          }}
+        >
+          {item.label}{" "}
+        </Text>
+        <Text
+          style={{
+            marginTop: 10,
+            marginBottom: 5,
+            fontSize:12
+          }}
+        >
+          (
+          {item.label === "Team 1"
+            ? calculateTeamsRatings(data).team1Rating
+            : calculateTeamsRatings(data).team2Rating}
+          )
+        </Text>
+      </View>
     );
 
   return (
